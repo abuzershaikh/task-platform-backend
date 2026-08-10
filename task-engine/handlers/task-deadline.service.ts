@@ -8,26 +8,21 @@ export class TaskDeadlineService {
     constructor(private readonly reallocationEngine: ReallocationEngine) { }
 
     /**
-     * Executes the Deadline Monitor cycle.
+     * Executes the Post-Deadline Monitor cycle.
      * Evaluates:
-     * 1. Early Reallocation Window (1 hour before deadline): Replaces incomplete workers with reason EARLY_DEADLINE_RISK.
-     * 2. Full Timeouts: Replaces expired workers with reason WORKER_TIMEOUT.
-     * 3. Campaign Auto-Extensions: Extends campaign expiry by +10 hours if incomplete at cutoff date.
+     * 1. Full Task Completion Timeouts: Replaces expired workers with reason WORKER_TIMEOUT (Only AFTER task deadline passes).
+     * 2. Campaign Auto-Extensions: Extends campaign expiry by +10 hours if incomplete at cutoff date.
      */
     async runDeadlineMonitorCycle() {
-        this.logger.log('Delegating Deadline Monitor cycle to Reallocation Engine...');
+        this.logger.log('Delegating Post-Deadline Monitor cycle to Reallocation Engine...');
         return this.reallocationEngine.runMonitorCycle();
     }
 
-    async processEarlyReallocations() {
-        return this.reallocationEngine.evaluateEarlyReallocations();
-    }
-
     async processExpiredTasks() {
-        const result = await this.reallocationEngine.runMonitorCycle();
+        const result = await this.reallocationEngine.processFullTimeouts();
         return {
-            expiredCount: result?.timeoutResults?.expiredCount || 0,
-            reallocatedCount: result?.timeoutResults?.reallocatedCount || 0,
+            expiredCount: result.expiredCount,
+            reallocatedCount: result.reallocatedCount,
         };
     }
 }

@@ -3,8 +3,7 @@ import { TaskRepository } from '../../../database/repositories/task.repository';
 import { OrderRepository } from '../../../database/repositories/order.repository';
 import { TaskReleaseService } from './task-release.service';
 import { ReassignmentService } from './reassignment.service';
-import { EarlyReallocationService } from './early-reallocation.service';
-import { ReleaseReason } from '../types/reallocation.types';
+import { ReleaseReason, PostDeadlineEvaluation } from '../types/reallocation.types';
 
 @Injectable()
 export class DeadlineMonitorService {
@@ -15,31 +14,39 @@ export class DeadlineMonitorService {
         private readonly orderRepo: OrderRepository,
         private readonly releaseService: TaskReleaseService,
         private readonly reassignmentService: ReassignmentService,
-        private readonly earlyService: EarlyReallocationService,
     ) { }
 
-    async monitorDeadlines(earlyReallocationHours: number = 1, campaignAutoExtensionHours: number = 10) {
-        this.logger.log('Starting Deadline Monitor cycle...');
+    /**
+     * Executes the Post-Deadline Monitor cycle.
+     * Rules:
+     * 1. Workers are NOT removed before deadline. Workers get full duration to complete task.
+     * 2. When completion deadline passes without proof submission: Release worker (reason: WORKER_TIMEOUT)
+     *    and lock participation in campaign_worker_participation (Worker permanently excluded from this campaign).
+     * 3. Reassign task to a NEW unused worker in the campaign.
+     * 4. If campaign cutoff date passes with incomplete tasks, auto-extend campaign expiry by +10 hours.
+     */
+    async monitorDeadlines(campaignAutoExtensionHours: number = 10): Promise<PostDeadlineEvaluation> {
+        this.logger.log('Starting Post-Deadline Monitor cycle...');
 
-        // 1. Process Early Reallocations (1 hour before deadline)
-        const earlyResults = await this.earlyService.evaluateEarlyReallocations(earlyReallocationHours);
-
-        // 2. Process Full Timeouts (Past 100% deadline)
+        // 1. Process Full Timeouts (Only AFTER worker task deadline has passed)
         const timeoutResults = await this.processFullTimeouts();
 
-        // 3. Process Campaign Auto-Extensions (+10 hours if campaign incomplete at expiry date)
+        // 2. Process Campaign Auto-Extensions (+10 hours if campaign incomplete at expiry date)
         const extensionResults = await this.processCampaignAutoExtensions(campaignAutoExtensionHours);
 
         return {
-            earlyResults,
-            timeoutResults,
-            extensionResults,
+            evaluatedTasksCount: timeoutResults.evaluatedCount,
+            expiredTasksCount: timeoutResults.expiredCount,
+            reallocatedTasksCount: timeoutResults.reallocatedCount,
+            extendedCampaignsCount: extensionResults.extendedCampaignsCount,
         };
     }
 
-    private async processFullTimeouts(): Promise<{ expiredCount: number; reallocatedCount: number }> {
+    async processFullTimeouts(): Promise<{ evaluatedCount: number; expiredCount: number; reallocatedCount: number }> {
         const now = new Date();
         const activeAssignedTasks = await this.taskRepo.findAssignedTasks();
+
+        let evaluatedCount = 0;
         let expiredCount = 0;
         let reallocatedCount = 0;
 
@@ -49,36 +56,53 @@ export class DeadlineMonitorService {
 
             if (!assignedWorkerId || !task.deadline) continue;
 
+            evaluatedCount++;
+
+            // Shield submitted/completed tasks
             const shieldedStatuses = ['SUBMITTED', 'submitted', 'UNDER_REVIEW', 'under_review', 'APPROVED', 'approved', 'completed'];
             if (shieldedStatuses.includes(task.status)) continue;
 
+            // Worker gets full task deadline! Only execute release if NOW > task.deadline
             if (new Date(task.deadline) < now) {
-                this.logger.warn(`FULL TIMEOUT: Task '${task.id}' expired for Worker '${assignedWorkerId}'.`);
+                this.logger.warn(`POST-DEADLINE TIMEOUT: Task '${task.id}' deadline passed for Worker '${assignedWorkerId}'.`);
 
+                // 1. Release worker with reason WORKER_TIMEOUT (Locks participation in DB -> Worker permanently excluded from Campaign)
                 const released = await this.releaseService.releaseWorkerFromTask({
                     taskId: task.id,
                     workerId: assignedWorkerId,
                     campaignId,
                     reason: ReleaseReason.WORKER_TIMEOUT,
-                    details: 'Full task completion deadline expired',
+                    details: 'Task completion deadline expired without proof submission',
                 });
 
                 if (released) {
                     expiredCount++;
+
+                    // 2. Check campaign cutoff date before reassigning
+                    const order = await this.orderRepo.findById(task.orderId);
+                    const campaignCutoff = order ? order.campaignExpiryDateSnapshot || order.campaignExpiryDate : null;
+
+                    if (campaignCutoff && new Date(campaignCutoff) < now) {
+                        this.logger.warn(`Campaign '${campaignId}' cutoff date has passed. Skipping reassignment.`);
+                        continue;
+                    }
+
+                    // 3. Reassign task to a NEW unused worker in the campaign
                     const newWorkerId = await this.reassignmentService.reassignTaskToNewWorker(task.id, campaignId);
-                    if (newWorkerId) reallocatedCount++;
+                    if (newWorkerId) {
+                        reallocatedCount++;
+                    }
                 }
             }
         }
 
-        return { expiredCount, reallocatedCount };
+        return { evaluatedCount, expiredCount, reallocatedCount };
     }
 
-    private async processCampaignAutoExtensions(extensionHours: number = 10): Promise<{ extendedCampaignsCount: number }> {
+    async processCampaignAutoExtensions(extensionHours: number = 10): Promise<{ extendedCampaignsCount: number }> {
         const now = new Date();
         let extendedCampaignsCount = 0;
 
-        // Auto-extend incomplete active orders whose campaignExpiryDate has passed
         const activeOrders = await this.orderRepo.findActiveOrders();
         for (const order of activeOrders) {
             const expiryDate = order.campaignExpiryDateSnapshot || order.campaignExpiryDate;

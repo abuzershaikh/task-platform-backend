@@ -28,7 +28,6 @@ import { MatchingEngineModule } from '../../matching-engine/matching-engine.modu
 // Reallocation Engine Services
 import { TaskReleaseService } from '../engines/reallocation-engine/services/task-release.service';
 import { ReassignmentService } from '../engines/reallocation-engine/services/reassignment.service';
-import { EarlyReallocationService } from '../engines/reallocation-engine/services/early-reallocation.service';
 import { DeadlineMonitorService } from '../engines/reallocation-engine/services/deadline-monitor.service';
 import { ReallocationEngine } from '../engines/reallocation-engine/reallocation.engine';
 
@@ -51,7 +50,6 @@ const providers = [
     OrderActivatedListener,
     TaskReleaseService,
     ReassignmentService,
-    EarlyReallocationService,
     DeadlineMonitorService,
     ReallocationEngine,
 ];
