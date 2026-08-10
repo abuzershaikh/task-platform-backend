@@ -3,6 +3,8 @@ import { DatabaseModule } from '../database/database.module';
 import { AuditLogService } from './audit-log.service';
 import { NotificationService } from './notification.service';
 import { FileStorageService } from './file-storage.service';
+import { PricingEngineService } from './pricing-engine.service';
+import { RatingEngineService } from './rating-engine.service';
 
 @Global()
 @Module({
@@ -11,11 +13,15 @@ import { FileStorageService } from './file-storage.service';
         AuditLogService,
         NotificationService,
         FileStorageService,
+        PricingEngineService,
+        RatingEngineService,
     ],
     exports: [
         AuditLogService,
         NotificationService,
         FileStorageService,
+        PricingEngineService,
+        RatingEngineService,
     ],
 })
 export class ServicesModule { }

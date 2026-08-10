@@ -59,6 +59,35 @@ export class BuyerReviewController {
         };
     }
 
+    @Get(':submissionId')
+    @ApiOperation({ summary: 'Get submission review details' })
+    async getReviewDetail(
+        @Param('submissionId') submissionId: string,
+        @CurrentUser() user: User,
+    ) {
+        const submission = await this.submissionRepo.findById(submissionId);
+        if (!submission) {
+            throw new NotFoundException('Submission not found');
+        }
+
+        const task = await this.taskRepo.findById(submission.taskId);
+        if (!task) {
+            throw new NotFoundException('Task not found');
+        }
+
+        const order = await this.orderRepo.findById(task.orderId);
+        if (!order || order.buyerId !== user.id) {
+            throw new ForbiddenException('You do not have access to this submission');
+        }
+
+        return {
+            success: true,
+            submission,
+            task,
+            order,
+        };
+    }
+
     @Post(':submissionId/approve')
     @ApiOperation({ summary: 'Approve submission' })
     async approveSubmission(
@@ -95,10 +124,10 @@ export class BuyerReviewController {
     }
 
     @Post(':submissionId/reject')
-    @ApiOperation({ summary: 'Reject submission' })
+    @ApiOperation({ summary: 'Reject submission with mandatory structured reason' })
     async rejectSubmission(
         @Param('submissionId') submissionId: string,
-        @Body() body: { notes?: string },
+        @Body() body: { reasonCode?: string; note?: string; notes?: string },
         @CurrentUser() user: User,
     ) {
         const submission = await this.submissionRepo.findById(submissionId);
@@ -116,16 +145,57 @@ export class BuyerReviewController {
             throw new ForbiddenException('You do not have access to review this submission');
         }
 
+        const reasonCode = body.reasonCode || 'INVALID_PROOF';
+        const noteText = body.note || body.notes || 'Submission rejected by buyer';
+
         const review = await this.reviewEngine.reviewSubmission(submissionId, {
             action: 'rejected',
             reviewedBy: user.id,
-            notes: body.notes || 'Submission rejected by buyer',
+            notes: `[${reasonCode}] ${noteText}`,
         });
 
         return {
             success: true,
             review,
+            reasonCode,
             message: 'Submission rejected',
+        };
+    }
+
+    @Post(':submissionId/request-changes')
+    @ApiOperation({ summary: 'Request changes/resubmission from worker' })
+    async requestChanges(
+        @Param('submissionId') submissionId: string,
+        @Body() body: { reasonCode?: string; note: string },
+        @CurrentUser() user: User,
+    ) {
+        const submission = await this.submissionRepo.findById(submissionId);
+        if (!submission) {
+            throw new NotFoundException('Submission not found');
+        }
+
+        const task = await this.taskRepo.findById(submission.taskId);
+        if (!task) {
+            throw new NotFoundException('Task not found');
+        }
+
+        const order = await this.orderRepo.findById(task.orderId);
+        if (!order || order.buyerId !== user.id) {
+            throw new ForbiddenException('You do not have access to review this submission');
+        }
+
+        const reasonCode = body.reasonCode || 'CHANGES_REQUESTED';
+        const review = await this.reviewEngine.reviewSubmission(submissionId, {
+            action: 'rejected',
+            reviewedBy: user.id,
+            notes: `[${reasonCode}] Changes requested: ${body.note}`,
+        });
+
+        return {
+            success: true,
+            review,
+            reasonCode,
+            message: 'Changes requested from worker. Resubmission unlocked.',
         };
     }
 }

@@ -24,6 +24,7 @@ import { PayoutEngineModule } from '../../payout-engine/payout-engine.module';
 // Controllers
 import { AuthController } from './controllers/auth/auth.controller';
 import { FileController } from './controllers/common/file.controller';
+import { WebhookController } from './controllers/webhooks/webhook.controller';
 
 // Worker Controllers
 import { WorkerTaskController } from './controllers/worker/task.controller';
@@ -33,6 +34,8 @@ import { WorkerKycController } from './controllers/worker/kyc.controller';
 import { WorkerRatingController } from './controllers/worker/rating.controller';
 import { WorkerPaymentMethodController } from './controllers/worker/payment-method.controller';
 import { WorkerNotificationController } from './controllers/worker/notification.controller';
+import { WorkerScoreController } from './controllers/worker/score.controller';
+import { WorkerAvailabilityController } from './controllers/worker/availability.controller';
 
 // Buyer Controllers
 import { BuyerOrderController } from './controllers/buyer/order.controller';
@@ -40,17 +43,24 @@ import { BuyerReviewController } from './controllers/buyer/review.controller';
 import { BuyerRatingController } from './controllers/buyer/rating.controller';
 import { BuyerBillingController } from './controllers/buyer/billing.controller';
 import { BuyerNotificationController } from './controllers/buyer/notification.controller';
+import { BuyerProfileController } from './controllers/buyer/profile.controller';
+import { BuyerPaymentController } from './controllers/buyer/payment.controller';
 
 // Admin Controllers
+import { AdminDashboardController } from './controllers/admin/dashboard.controller';
 import { AdminReviewController } from './controllers/admin/review.controller';
 import { AdminAnalyticsController } from './controllers/admin/analytics.controller';
 import { AdminBuyerManagementController } from './controllers/admin/buyer-management.controller';
 import { AdminWorkerManagementController } from './controllers/admin/worker-management.controller';
 import { AdminTaskManagementController } from './controllers/admin/task-management.controller';
+import { AdminOrderController } from './controllers/admin/order.controller';
 import { AdminKycManagementController } from './controllers/admin/kyc-management.controller';
 import { AdminPayoutManagementController } from './controllers/admin/payout-management.controller';
 import { AdminEngineConfigController } from './controllers/admin/engine-config.controller';
 import { AdminAuditLogController } from './controllers/admin/audit-log.controller';
+import { AdminServiceCatalogController } from './controllers/admin/service-catalog.controller';
+import { AdminAuditController } from './controllers/admin/audit.controller';
+import { AdminSystemSettingsController } from './controllers/admin/system-settings.controller';
 
 @Module({
     imports: [
@@ -85,6 +95,7 @@ import { AdminAuditLogController } from './controllers/admin/audit-log.controlle
     controllers: [
         AuthController,
         FileController,
+        WebhookController,
 
         // Worker
         WorkerTaskController,
@@ -94,6 +105,8 @@ import { AdminAuditLogController } from './controllers/admin/audit-log.controlle
         WorkerRatingController,
         WorkerPaymentMethodController,
         WorkerNotificationController,
+        WorkerScoreController,
+        WorkerAvailabilityController,
 
         // Buyer
         BuyerOrderController,
@@ -101,17 +114,24 @@ import { AdminAuditLogController } from './controllers/admin/audit-log.controlle
         BuyerRatingController,
         BuyerBillingController,
         BuyerNotificationController,
+        BuyerProfileController,
+        BuyerPaymentController,
 
         // Admin
+        AdminDashboardController,
         AdminReviewController,
         AdminAnalyticsController,
         AdminBuyerManagementController,
         AdminWorkerManagementController,
         AdminTaskManagementController,
+        AdminOrderController,
         AdminKycManagementController,
         AdminPayoutManagementController,
         AdminEngineConfigController,
         AdminAuditLogController,
+        AdminServiceCatalogController,
+        AdminAuditController,
+        AdminSystemSettingsController,
     ],
 })
 export class AppModule { }

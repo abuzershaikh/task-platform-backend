@@ -32,6 +32,24 @@ export class Order {
     @Column({ name: 'reward_per_task', type: 'decimal', precision: 10, scale: 2 })
     rewardPerTask: number;
 
+    @Column({ name: 'buyer_unit_price', type: 'decimal', precision: 10, scale: 2, nullable: true })
+    buyerUnitPrice: number;
+
+    @Column({ name: 'worker_reward_snapshot', type: 'decimal', precision: 10, scale: 2, nullable: true })
+    workerRewardSnapshot: number;
+
+    @Column({ name: 'platform_margin_snapshot', type: 'decimal', precision: 10, scale: 2, nullable: true })
+    platformMarginSnapshot: number;
+
+    @Column({ name: 'service_code', type: 'varchar', length: 100, nullable: true })
+    serviceCode: string;
+
+    @Column({ name: 'pricing_version', type: 'int', default: 1 })
+    pricingVersion: number;
+
+    @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2, nullable: true })
+    totalAmount: number;
+
     @Column({ type: 'varchar', length: 50 })
     status: string;
 

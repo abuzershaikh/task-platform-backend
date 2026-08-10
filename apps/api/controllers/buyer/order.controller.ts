@@ -14,6 +14,7 @@ import { TaskRepository } from '../../../../shared/database/repositories/task.re
 import { SubmissionRepository } from '../../../../shared/database/repositories/submission.repository';
 import { TaskEngineService } from '../../../../task-engine/task-engine.service';
 import { ProgressEngineService } from '../../../../progress-engine/progress.service';
+import { PricingEngineService } from '../../../../shared/services/pricing-engine.service';
 import { CurrentUser } from '../../../../shared/auth/decorators/current-user.decorator';
 import { Roles } from '../../../../shared/auth/decorators/roles.decorator';
 import { UserRole, User } from '../../../../shared/database/entities/user.entity';
@@ -29,10 +30,11 @@ export class BuyerOrderController {
         private readonly submissionRepo: SubmissionRepository,
         private readonly taskEngine: TaskEngineService,
         private readonly progressEngine: ProgressEngineService,
+        private readonly pricingEngine: PricingEngineService,
     ) { }
 
     @Post()
-    @ApiOperation({ summary: 'Create a new campaign order and generate tasks' })
+    @ApiOperation({ summary: 'Create a new campaign order with price snapshotting' })
     async createOrder(
         @CurrentUser() user: User,
         @Body()
@@ -41,13 +43,29 @@ export class BuyerOrderController {
             description?: string;
             taskType: string;
             totalTasksRequired: number;
-            rewardPerTask: number;
             requirements?: any;
             reviewMode?: string;
         },
     ) {
-        if (!data.title || !data.taskType || !data.totalTasksRequired || !data.rewardPerTask) {
-            throw new BadRequestException('title, taskType, totalTasksRequired, and rewardPerTask are required');
+        if (!data.title || !data.taskType || !data.totalTasksRequired) {
+            throw new BadRequestException('title, taskType, and totalTasksRequired are required');
+        }
+
+        let priceSnapshot: any = null;
+        try {
+            priceSnapshot = await this.pricingEngine.calculatePriceSnapshot(
+                data.taskType.toUpperCase(),
+                data.totalTasksRequired,
+            );
+        } catch {
+            // Fallback if catalog not populated yet
+            priceSnapshot = {
+                buyerUnitPrice: 10,
+                workerReward: 6,
+                platformMargin: 4,
+                pricingVersion: 1,
+                totalOrderAmount: 10 * data.totalTasksRequired,
+            };
         }
 
         const order = await this.orderRepo.create({
@@ -56,27 +74,34 @@ export class BuyerOrderController {
             description: data.description,
             taskType: data.taskType,
             totalTasksRequired: data.totalTasksRequired,
-            rewardPerTask: data.rewardPerTask,
-            status: 'active',
+            rewardPerTask: priceSnapshot.workerReward,
+            buyerUnitPrice: priceSnapshot.buyerUnitPrice,
+            workerRewardSnapshot: priceSnapshot.workerReward,
+            platformMarginSnapshot: priceSnapshot.platformMargin,
+            serviceCode: data.taskType,
+            pricingVersion: priceSnapshot.pricingVersion,
+            totalAmount: priceSnapshot.totalOrderAmount,
+            status: 'ACTIVE',
             requirements: data.requirements,
             reviewMode: data.reviewMode || 'buyer',
         });
 
-        // Generate tasks for order
+        // Generate individual tasks for order
         for (let i = 0; i < data.totalTasksRequired; i++) {
             await this.taskEngine.createTask({
                 orderId: order.id,
                 campaignId: order.id,
                 taskType: data.taskType,
                 requirements: data.requirements,
-                rewardAmount: data.rewardPerTask,
+                rewardAmount: priceSnapshot.workerReward,
             });
         }
 
         return {
             success: true,
             order,
-            message: 'Order created successfully and tasks queued',
+            priceSnapshot,
+            message: 'Order created successfully and price snapshot locked',
         };
     }
 
@@ -91,15 +116,11 @@ export class BuyerOrderController {
     }
 
     @Get(':id')
-    @ApiOperation({ summary: 'Get order details with ownership validation' })
+    @ApiOperation({ summary: 'Get order details' })
     async getOrder(@Param('id') orderId: string, @CurrentUser() user: User) {
         const order = await this.orderRepo.findById(orderId);
-        if (!order) {
-            throw new NotFoundException('Order not found');
-        }
-
-        if (order.buyerId !== user.id) {
-            throw new ForbiddenException('You do not have access to this order');
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
         }
 
         return {
@@ -112,12 +133,8 @@ export class BuyerOrderController {
     @ApiOperation({ summary: 'Get order progress and completion metrics' })
     async getOrderProgress(@Param('id') orderId: string, @CurrentUser() user: User) {
         const order = await this.orderRepo.findById(orderId);
-        if (!order) {
-            throw new NotFoundException('Order not found');
-        }
-
-        if (order.buyerId !== user.id) {
-            throw new ForbiddenException('You do not have access to this order');
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
         }
 
         const progress = await this.progressEngine.getOrderProgress(orderId);
@@ -127,51 +144,166 @@ export class BuyerOrderController {
         };
     }
 
-    @Get(':id/submissions')
-    @ApiOperation({ summary: 'Get submissions for a specific order' })
-    async getOrderSubmissions(@Param('id') orderId: string, @CurrentUser() user: User) {
+    @Get(':id/tasks')
+    @ApiOperation({ summary: 'Get all tasks associated with order' })
+    async getOrderTasks(@Param('id') orderId: string, @CurrentUser() user: User) {
         const order = await this.orderRepo.findById(orderId);
-        if (!order) {
-            throw new NotFoundException('Order not found');
-        }
-
-        if (order.buyerId !== user.id) {
-            throw new ForbiddenException('You do not have access to this order');
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
         }
 
         const tasks = await this.taskRepo.findByOrderId(orderId);
-        const taskIds = tasks.map((t) => t.id);
+        return {
+            success: true,
+            tasks,
+            count: tasks.length,
+        };
+    }
 
-        let submissions: any[] = [];
-        for (const taskId of taskIds) {
-            const sub = await this.submissionRepo.findByTaskId(taskId);
-            if (sub) {
-                submissions.push(sub);
-            }
+    @Get(':id/completed')
+    @ApiOperation({ summary: 'Get completed tasks for order' })
+    async getCompletedTasks(@Param('id') orderId: string, @CurrentUser() user: User) {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
         }
+
+        const tasks = await this.taskRepo.findByOrderId(orderId);
+        const completed = tasks.filter((t) => t.status === 'completed' || t.status === 'approved');
 
         return {
             success: true,
-            submissions,
+            tasks: completed,
+            count: completed.length,
+        };
+    }
+
+    @Get(':id/pending')
+    @ApiOperation({ summary: 'Get pending tasks for order' })
+    async getPendingTasks(@Param('id') orderId: string, @CurrentUser() user: User) {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
+        }
+
+        const tasks = await this.taskRepo.findByOrderId(orderId);
+        const pending = tasks.filter((t) => t.status === 'pending' || t.status === 'assigned' || t.status === 'submitted');
+
+        return {
+            success: true,
+            tasks: pending,
+            count: pending.length,
+        };
+    }
+
+    @Get(':id/rejected')
+    @ApiOperation({ summary: 'Get rejected tasks for order' })
+    async getRejectedTasks(@Param('id') orderId: string, @CurrentUser() user: User) {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
+        }
+
+        const tasks = await this.taskRepo.findByOrderId(orderId);
+        const rejected = tasks.filter((t) => t.status === 'rejected');
+
+        return {
+            success: true,
+            tasks: rejected,
+            count: rejected.length,
+        };
+    }
+
+    @Get(':id/activity')
+    @ApiOperation({ summary: 'Get order activity timeline' })
+    async getOrderActivity(@Param('id') orderId: string, @CurrentUser() user: User) {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
+        }
+
+        const tasks = await this.taskRepo.findByOrderId(orderId);
+
+        return {
+            success: true,
+            orderId: order.id,
+            activity: [
+                { type: 'ORDER_CREATED', timestamp: order.createdAt, detail: `Order created with ${order.totalTasksRequired} tasks` },
+                { type: 'TASKS_GENERATED', timestamp: order.createdAt, detail: `${tasks.length} individual tasks queued` },
+            ],
+        };
+    }
+
+    @Get(':id/analytics')
+    @ApiOperation({ summary: 'Get detailed order analytics' })
+    async getOrderAnalytics(@Param('id') orderId: string, @CurrentUser() user: User) {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
+        }
+
+        const progress = await this.progressEngine.getOrderProgress(orderId);
+
+        return {
+            success: true,
+            analytics: {
+                orderId: order.id,
+                totalRequired: order.totalTasksRequired,
+                completedCount: order.tasksCompleted,
+                completionRatePercentage: progress.completionRate * 100,
+                unitPrice: order.buyerUnitPrice || order.rewardPerTask,
+                totalAmountSpent: (order.buyerUnitPrice || order.rewardPerTask) * order.tasksCompleted,
+            },
+        };
+    }
+
+    @Post(':id/pause')
+    @ApiOperation({ summary: 'Pause order campaign' })
+    async pauseOrder(@Param('id') orderId: string, @CurrentUser() user: User) {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
+        }
+
+        if (order.status !== 'ACTIVE') {
+            throw new BadRequestException(`Cannot pause order with status ${order.status}`);
+        }
+
+        await this.orderRepo.update(orderId, { status: 'PAUSED' });
+        return {
+            success: true,
+            message: 'Order paused successfully',
+        };
+    }
+
+    @Post(':id/resume')
+    @ApiOperation({ summary: 'Resume paused order campaign' })
+    async resumeOrder(@Param('id') orderId: string, @CurrentUser() user: User) {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
+        }
+
+        if (order.status !== 'PAUSED') {
+            throw new BadRequestException(`Cannot resume order with status ${order.status}`);
+        }
+
+        await this.orderRepo.update(orderId, { status: 'ACTIVE' });
+        return {
+            success: true,
+            message: 'Order resumed successfully',
         };
     }
 
     @Post(':id/cancel')
-    @ApiOperation({ summary: 'Cancel active order' })
+    @ApiOperation({ summary: 'Cancel order' })
     async cancelOrder(@Param('id') orderId: string, @CurrentUser() user: User) {
         const order = await this.orderRepo.findById(orderId);
-        if (!order) {
-            throw new NotFoundException('Order not found');
+        if (!order || order.buyerId !== user.id) {
+            throw new NotFoundException('Order not found or access denied');
         }
 
-        if (order.buyerId !== user.id) {
-            throw new ForbiddenException('You do not have access to this order');
-        }
-
-        await this.orderRepo.update(orderId, {
-            status: 'cancelled',
-        });
-
+        await this.orderRepo.update(orderId, { status: 'CANCELLED' });
         return {
             success: true,
             message: 'Order cancelled',

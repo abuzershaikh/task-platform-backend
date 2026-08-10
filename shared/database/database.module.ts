@@ -17,6 +17,8 @@ import { Rating } from './entities/rating.entity';
 import { File } from './entities/file.entity';
 import { Notification } from './entities/notification.entity';
 import { AuditLog } from './entities/audit-log.entity';
+import { ServiceCatalog } from './entities/service-catalog.entity';
+import { SystemSetting } from './entities/system-settings.entity';
 
 // Repositories
 import { UserRepository } from './repositories/user.repository';
@@ -33,6 +35,8 @@ import { RatingRepository } from './repositories/rating.repository';
 import { FileRepository } from './repositories/file.repository';
 import { NotificationRepository } from './repositories/notification.repository';
 import { AuditLogRepository } from './repositories/audit-log.repository';
+import { ServiceCatalogRepository } from './repositories/service-catalog.repository';
+import { SystemSettingsRepository } from './repositories/system-settings.repository';
 
 const entities = [
     User,
@@ -49,6 +53,8 @@ const entities = [
     File,
     Notification,
     AuditLog,
+    ServiceCatalog,
+    SystemSetting,
 ];
 
 const repositories = [
@@ -66,6 +72,8 @@ const repositories = [
     FileRepository,
     NotificationRepository,
     AuditLogRepository,
+    ServiceCatalogRepository,
+    SystemSettingsRepository,
 ];
 
 @Module({
