@@ -1,16 +1,12 @@
 import { Controller, Post, Param, Body, Headers } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public } from '../../../../shared/auth/decorators/public.decorator';
-import { OrderRepository } from '../../../../shared/database/repositories/order.repository';
-import { TaskEngineService } from '../../../../task-engine/task-engine.service';
+import { OrderStateMachineService } from '../../../../shared/services/order-state-machine.service';
 
 @ApiTags('Webhooks')
 @Controller('webhooks')
 export class WebhookController {
-    constructor(
-        private readonly orderRepo: OrderRepository,
-        private readonly taskEngine: TaskEngineService,
-    ) { }
+    constructor(private readonly orderStateMachine: OrderStateMachineService) { }
 
     @Public()
     @Post('payment/:provider')
@@ -23,25 +19,13 @@ export class WebhookController {
     ) {
         const event = body.event || body.type || 'payment.captured';
         const orderId = body.payload?.payment?.entity?.notes?.orderId || body.orderId;
+        const transactionId = body.payload?.payment?.entity?.id || body.paymentId || `txn_${Date.now()}`;
 
         if (orderId) {
-            const order = await this.orderRepo.findById(orderId);
-            if (order && (order.status === 'PAYMENT_PENDING' || order.status === 'draft')) {
-                // Transition order to ACTIVE
-                await this.orderRepo.update(orderId, { status: 'ACTIVE' });
-
-                // Generate individual tasks using the order's immutable workerRewardSnapshot
-                const rewardAmount = Number(order.workerRewardSnapshot || order.rewardPerTask || 5);
-                for (let i = 0; i < order.totalTasksRequired; i++) {
-                    await this.taskEngine.createTask({
-                        orderId: order.id,
-                        campaignId: order.id,
-                        taskType: order.taskType,
-                        requirements: order.requirements,
-                        rewardAmount,
-                    });
-                }
-            }
+            // Webhook ONLY verifies payment and triggers Order State Machine transition.
+            // Order State Machine transitions order to ACTIVE and dispatches 'order.activated' event.
+            // OrderActivatedListener generates tasks asynchronously.
+            await this.orderStateMachine.transitionToActive(orderId, transactionId);
         }
 
         return {
@@ -49,6 +33,8 @@ export class WebhookController {
             provider,
             event,
             status: 'processed',
+            orderId,
+            transactionId,
         };
     }
 }

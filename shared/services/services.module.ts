@@ -1,4 +1,4 @@
-import { Module, Global } from '@nestjs/common';
+import { Module, Global, forwardRef } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
 import { AuditLogService } from './audit-log.service';
 import { NotificationService } from './notification.service';
@@ -19,6 +19,11 @@ import { ServiceCatalogService } from '../modules/service-catalog/services/servi
 import { ServicePricingService } from '../modules/service-catalog/services/service-pricing.service';
 import { ServiceVersionService } from '../modules/service-catalog/services/service-version.service';
 
+// Order State Machine & Event Listeners
+import { OrderStateMachineService } from './order-state-machine.service';
+import { OrderActivatedListener } from './order-activated.listener';
+import { TaskEngineModule } from '../../task-engine/task-engine.module';
+
 const providers = [
     AuditLogService,
     NotificationService,
@@ -34,11 +39,13 @@ const providers = [
     ServiceCatalogService,
     ServicePricingService,
     ServiceVersionService,
+    OrderStateMachineService,
+    OrderActivatedListener,
 ];
 
 @Global()
 @Module({
-    imports: [DatabaseModule],
+    imports: [DatabaseModule, forwardRef(() => TaskEngineModule)],
     providers,
     exports: providers,
 })
