@@ -20,6 +20,8 @@ import { AuditLog } from './entities/audit-log.entity';
 import { ServiceCatalog } from './entities/service-catalog.entity';
 import { ServicePricing } from './entities/service-pricing.entity';
 import { SystemSetting } from './entities/system-settings.entity';
+import { PaymentTransaction } from './entities/payment-transaction.entity';
+import { TaskGenerationJob } from './entities/task-generation-job.entity';
 
 // Repositories
 import { UserRepository } from './repositories/user.repository';
@@ -39,6 +41,8 @@ import { AuditLogRepository } from './repositories/audit-log.repository';
 import { ServiceCatalogRepository } from './repositories/service-catalog.repository';
 import { ServicePricingRepository } from './repositories/service-pricing.repository';
 import { SystemSettingsRepository } from './repositories/system-settings.repository';
+import { PaymentTransactionRepository } from './repositories/payment-transaction.repository';
+import { TaskGenerationJobRepository } from './repositories/task-generation-job.repository';
 
 const entities = [
     User,
@@ -58,6 +62,8 @@ const entities = [
     ServiceCatalog,
     ServicePricing,
     SystemSetting,
+    PaymentTransaction,
+    TaskGenerationJob,
 ];
 
 const repositories = [
@@ -78,6 +84,8 @@ const repositories = [
     ServiceCatalogRepository,
     ServicePricingRepository,
     SystemSettingsRepository,
+    PaymentTransactionRepository,
+    TaskGenerationJobRepository,
 ];
 
 @Module({
