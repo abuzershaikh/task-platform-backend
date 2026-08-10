@@ -18,6 +18,7 @@ import { File } from './entities/file.entity';
 import { Notification } from './entities/notification.entity';
 import { AuditLog } from './entities/audit-log.entity';
 import { ServiceCatalog } from './entities/service-catalog.entity';
+import { ServicePricing } from './entities/service-pricing.entity';
 import { SystemSetting } from './entities/system-settings.entity';
 
 // Repositories
@@ -36,6 +37,7 @@ import { FileRepository } from './repositories/file.repository';
 import { NotificationRepository } from './repositories/notification.repository';
 import { AuditLogRepository } from './repositories/audit-log.repository';
 import { ServiceCatalogRepository } from './repositories/service-catalog.repository';
+import { ServicePricingRepository } from './repositories/service-pricing.repository';
 import { SystemSettingsRepository } from './repositories/system-settings.repository';
 
 const entities = [
@@ -54,6 +56,7 @@ const entities = [
     Notification,
     AuditLog,
     ServiceCatalog,
+    ServicePricing,
     SystemSetting,
 ];
 
@@ -73,6 +76,7 @@ const repositories = [
     NotificationRepository,
     AuditLogRepository,
     ServiceCatalogRepository,
+    ServicePricingRepository,
     SystemSettingsRepository,
 ];
 

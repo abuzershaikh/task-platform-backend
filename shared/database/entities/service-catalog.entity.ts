@@ -4,9 +4,11 @@ import {
     Column,
     CreateDateColumn,
     UpdateDateColumn,
+    Index,
 } from 'typeorm';
 
 @Entity('service_catalog')
+@Index(['code'], { unique: true })
 export class ServiceCatalog {
     @PrimaryGeneratedColumn('uuid')
     id: string;
@@ -20,23 +22,11 @@ export class ServiceCatalog {
     @Column({ type: 'text', nullable: true })
     description: string;
 
-    @Column({ name: 'buyer_unit_price', type: 'decimal', precision: 10, scale: 2 })
-    buyerUnitPrice: number;
-
-    @Column({ name: 'worker_reward', type: 'decimal', precision: 10, scale: 2 })
-    workerReward: number;
-
-    @Column({ name: 'platform_margin', type: 'decimal', precision: 10, scale: 2 })
-    platformMargin: number;
-
     @Column({ name: 'is_active', type: 'boolean', default: true })
     isActive: boolean;
 
     @Column({ type: 'int', default: 1 })
     version: number;
-
-    @Column({ name: 'pricing_history', type: 'json', nullable: true })
-    pricingHistory: any[];
 
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;

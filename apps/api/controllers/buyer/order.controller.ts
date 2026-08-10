@@ -4,7 +4,6 @@ import {
     Post,
     Param,
     Body,
-    ForbiddenException,
     NotFoundException,
     BadRequestException,
 } from '@nestjs/common';
@@ -14,7 +13,7 @@ import { TaskRepository } from '../../../../shared/database/repositories/task.re
 import { SubmissionRepository } from '../../../../shared/database/repositories/submission.repository';
 import { TaskEngineService } from '../../../../task-engine/task-engine.service';
 import { ProgressEngineService } from '../../../../progress-engine/progress.service';
-import { PricingEngineService } from '../../../../shared/services/pricing-engine.service';
+import { PricingEngine } from '../../../../shared/engines/pricing-engine/pricing.engine';
 import { CurrentUser } from '../../../../shared/auth/decorators/current-user.decorator';
 import { Roles } from '../../../../shared/auth/decorators/roles.decorator';
 import { UserRole, User } from '../../../../shared/database/entities/user.entity';
@@ -30,93 +29,131 @@ export class BuyerOrderController {
         private readonly submissionRepo: SubmissionRepository,
         private readonly taskEngine: TaskEngineService,
         private readonly progressEngine: ProgressEngineService,
-        private readonly pricingEngine: PricingEngineService,
+        private readonly pricingEngine: PricingEngine,
     ) { }
 
+    @Get('price-estimate')
+    @ApiOperation({ summary: 'Get server-calculated price estimate for buyer (Display-only preview)' })
+    async getPriceEstimate(
+        @Body() body: { serviceId?: string; serviceCode?: string; quantity: number },
+    ) {
+        const identifier = body.serviceId || body.serviceCode;
+        if (!identifier) {
+            throw new BadRequestException('serviceId or serviceCode is required');
+        }
+
+        const estimate = await this.pricingEngine.calculateBuyerPrice(identifier, body.quantity);
+        return {
+            success: true,
+            estimate,
+        };
+    }
+
     @Post()
-    @ApiOperation({ summary: 'Create a new campaign order with price snapshotting' })
+    @ApiOperation({ summary: 'Create a new campaign order with server-calculated price snapshot' })
     async createOrder(
         @CurrentUser() user: User,
         @Body()
         data: {
-            title: string;
+            title?: string;
             description?: string;
-            taskType: string;
-            totalTasksRequired: number;
+            serviceId?: string;
+            serviceCode?: string;
+            taskType?: string;
+            quantity?: number;
+            totalTasksRequired?: number;
             requirements?: any;
             reviewMode?: string;
         },
     ) {
-        if (!data.title || !data.taskType || !data.totalTasksRequired) {
-            throw new BadRequestException('title, taskType, and totalTasksRequired are required');
+        const serviceIdentifier = data.serviceId || data.serviceCode || data.taskType;
+        const quantity = data.quantity || data.totalTasksRequired;
+
+        if (!serviceIdentifier || !quantity) {
+            throw new BadRequestException('serviceId/serviceCode and quantity are required');
         }
 
-        let priceSnapshot: any = null;
+        let snapshot: any = null;
         try {
-            priceSnapshot = await this.pricingEngine.calculatePriceSnapshot(
-                data.taskType.toUpperCase(),
-                data.totalTasksRequired,
-            );
+            snapshot = await this.pricingEngine.createOrderPriceSnapshot(serviceIdentifier, quantity);
         } catch {
-            // Fallback if catalog not populated yet
-            priceSnapshot = {
+            // Fallback for mock/test runs before catalog seeding
+            snapshot = {
+                serviceCode: serviceIdentifier,
                 buyerUnitPrice: 10,
-                workerReward: 6,
-                platformMargin: 4,
+                workerRewardSnapshot: 6,
+                marginAmount: 4,
                 pricingVersion: 1,
-                totalOrderAmount: 10 * data.totalTasksRequired,
+                totalAmount: 10 * quantity,
             };
         }
 
+        const title = data.title || `${snapshot.serviceCode || serviceIdentifier} Campaign (${quantity} tasks)`;
+
         const order = await this.orderRepo.create({
             buyerId: user.id,
-            title: data.title,
+            title,
             description: data.description,
-            taskType: data.taskType,
-            totalTasksRequired: data.totalTasksRequired,
-            rewardPerTask: priceSnapshot.workerReward,
-            buyerUnitPrice: priceSnapshot.buyerUnitPrice,
-            workerRewardSnapshot: priceSnapshot.workerReward,
-            platformMarginSnapshot: priceSnapshot.platformMargin,
-            serviceCode: data.taskType,
-            pricingVersion: priceSnapshot.pricingVersion,
-            totalAmount: priceSnapshot.totalOrderAmount,
-            status: 'ACTIVE',
+            taskType: snapshot.serviceCode || serviceIdentifier,
+            totalTasksRequired: quantity,
+            rewardPerTask: snapshot.workerRewardSnapshot,
+            buyerUnitPrice: snapshot.buyerUnitPrice,
+            workerRewardSnapshot: snapshot.workerRewardSnapshot,
+            platformMarginSnapshot: snapshot.marginAmount,
+            serviceCode: snapshot.serviceCode || serviceIdentifier,
+            pricingVersion: snapshot.pricingVersion,
+            totalAmount: snapshot.totalAmount,
+            status: 'PAYMENT_PENDING',
             requirements: data.requirements,
             reviewMode: data.reviewMode || 'buyer',
         });
 
-        // Generate individual tasks for order
-        for (let i = 0; i < data.totalTasksRequired; i++) {
-            await this.taskEngine.createTask({
-                orderId: order.id,
-                campaignId: order.id,
-                taskType: data.taskType,
-                requirements: data.requirements,
-                rewardAmount: priceSnapshot.workerReward,
-            });
-        }
-
         return {
             success: true,
-            order,
-            priceSnapshot,
-            message: 'Order created successfully and price snapshot locked',
+            order: {
+                id: order.id,
+                title: order.title,
+                taskType: order.taskType,
+                totalTasksRequired: order.totalTasksRequired,
+                buyerUnitPrice: order.buyerUnitPrice,
+                totalAmount: order.totalAmount,
+                status: order.status,
+                pricingVersion: order.pricingVersion,
+                createdAt: order.createdAt,
+            },
+            priceSnapshot: {
+                buyerUnitPrice: snapshot.buyerUnitPrice,
+                totalAmount: snapshot.totalAmount,
+                pricingVersion: snapshot.pricingVersion,
+            },
+            message: 'Order created in PAYMENT_PENDING state. Complete payment to initiate task generation.',
         };
     }
 
     @Get()
-    @ApiOperation({ summary: 'List orders created by buyer' })
+    @ApiOperation({ summary: 'List orders created by buyer (Hides worker rewards and internal margins)' })
     async getOrders(@CurrentUser() user: User) {
         const orders = await this.orderRepo.findByBuyer(user.id);
+        const buyerSafeOrders = orders.map((o) => ({
+            id: o.id,
+            title: o.title,
+            taskType: o.taskType,
+            totalTasksRequired: o.totalTasksRequired,
+            tasksCompleted: o.tasksCompleted,
+            buyerUnitPrice: o.buyerUnitPrice || o.rewardPerTask,
+            totalAmount: o.totalAmount || Number(o.totalTasksRequired) * Number(o.rewardPerTask),
+            status: o.status,
+            createdAt: o.createdAt,
+        }));
+
         return {
             success: true,
-            orders,
+            orders: buyerSafeOrders,
         };
     }
 
     @Get(':id')
-    @ApiOperation({ summary: 'Get order details' })
+    @ApiOperation({ summary: 'Get buyer-safe order details' })
     async getOrder(@Param('id') orderId: string, @CurrentUser() user: User) {
         const order = await this.orderRepo.findById(orderId);
         if (!order || order.buyerId !== user.id) {
@@ -125,7 +162,19 @@ export class BuyerOrderController {
 
         return {
             success: true,
-            order,
+            order: {
+                id: order.id,
+                title: order.title,
+                description: order.description,
+                taskType: order.taskType,
+                totalTasksRequired: order.totalTasksRequired,
+                tasksCompleted: order.tasksCompleted,
+                buyerUnitPrice: order.buyerUnitPrice || order.rewardPerTask,
+                totalAmount: order.totalAmount || Number(order.totalTasksRequired) * Number(order.rewardPerTask),
+                status: order.status,
+                requirements: order.requirements,
+                createdAt: order.createdAt,
+            },
         };
     }
 
@@ -228,8 +277,8 @@ export class BuyerOrderController {
             success: true,
             orderId: order.id,
             activity: [
-                { type: 'ORDER_CREATED', timestamp: order.createdAt, detail: `Order created with ${order.totalTasksRequired} tasks` },
-                { type: 'TASKS_GENERATED', timestamp: order.createdAt, detail: `${tasks.length} individual tasks queued` },
+                { type: 'ORDER_CREATED', timestamp: order.createdAt, detail: `Order created in PAYMENT_PENDING state` },
+                { type: 'TASKS_GENERATED', timestamp: order.createdAt, detail: `${tasks.length} tasks active` },
             ],
         };
     }
@@ -265,10 +314,6 @@ export class BuyerOrderController {
             throw new NotFoundException('Order not found or access denied');
         }
 
-        if (order.status !== 'ACTIVE') {
-            throw new BadRequestException(`Cannot pause order with status ${order.status}`);
-        }
-
         await this.orderRepo.update(orderId, { status: 'PAUSED' });
         return {
             success: true,
@@ -282,10 +327,6 @@ export class BuyerOrderController {
         const order = await this.orderRepo.findById(orderId);
         if (!order || order.buyerId !== user.id) {
             throw new NotFoundException('Order not found or access denied');
-        }
-
-        if (order.status !== 'PAUSED') {
-            throw new BadRequestException(`Cannot resume order with status ${order.status}`);
         }
 
         await this.orderRepo.update(orderId, { status: 'ACTIVE' });
