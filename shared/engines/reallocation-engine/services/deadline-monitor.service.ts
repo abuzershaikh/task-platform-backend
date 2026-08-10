@@ -18,17 +18,18 @@ export class DeadlineMonitorService {
 
     /**
      * Executes the Post-Deadline Monitor cycle.
-     * Rules:
-     * 1. Workers are NOT removed before deadline. Workers get full duration to complete task.
-     * 2. When completion deadline passes without proof submission: Release worker (reason: WORKER_TIMEOUT)
-     *    and lock participation in campaign_worker_participation (Worker permanently excluded from this campaign).
-     * 3. Reassign task to a NEW unused worker in the campaign.
-     * 4. If campaign cutoff date passes with incomplete tasks, auto-extend campaign expiry by +10 hours.
+     * Production Rules:
+     * 1. Task timeout processing is COMPLETELY INDEPENDENT of campaign expiry date.
+     *    Worker W03 timing out at 10 PM triggers WORKER_TIMEOUT, release, and W11 reassignment immediately.
+     * 2. processFullTimeouts MUST process ONLY ASSIGNED, ACCEPTED, or IN_PROGRESS tasks.
+     *    SUBMITTED, UNDER_REVIEW, APPROVED, COMPLETED tasks are STRICTLY UNTOUCHABLE.
+     * 3. campaign_worker_participation records are NEVER deleted or reused. Record existence = permanent exclusion from campaign.
+     * 4. When campaign expiry cutoff arrives with incomplete tasks, campaign auto-extends (+10 hours) and opens new allocation window.
      */
     async monitorDeadlines(campaignAutoExtensionHours: number = 10): Promise<PostDeadlineEvaluation> {
         this.logger.log('Starting Post-Deadline Monitor cycle...');
 
-        // 1. Process Full Timeouts (Only AFTER worker task deadline has passed)
+        // 1. Process Full Timeouts (Independent of campaign expiry)
         const timeoutResults = await this.processFullTimeouts();
 
         // 2. Process Campaign Auto-Extensions (+10 hours if campaign incomplete at expiry date)
@@ -58,11 +59,14 @@ export class DeadlineMonitorService {
 
             evaluatedCount++;
 
-            // Shield submitted/completed tasks
-            const shieldedStatuses = ['SUBMITTED', 'submitted', 'UNDER_REVIEW', 'under_review', 'APPROVED', 'approved', 'completed'];
-            if (shieldedStatuses.includes(task.status)) continue;
+            // Production Protection: ONLY process ASSIGNED, ACCEPTED, or IN_PROGRESS tasks.
+            // SUBMITTED, UNDER_REVIEW, APPROVED, and COMPLETED tasks are STRICTLY UNTOUCHABLE.
+            const allowedStatuses = ['ASSIGNED', 'assigned', 'ACCEPTED', 'accepted', 'IN_PROGRESS', 'in_progress'];
+            if (!allowedStatuses.includes(task.status)) {
+                continue;
+            }
 
-            // Worker gets full task deadline! Only execute release if NOW > task.deadline
+            // Worker gets full task deadline! Worker timeout triggers immediately at task.deadline (independent of campaign expiry)
             if (new Date(task.deadline) < now) {
                 this.logger.warn(`POST-DEADLINE TIMEOUT: Task '${task.id}' deadline passed for Worker '${assignedWorkerId}'.`);
 
@@ -78,16 +82,7 @@ export class DeadlineMonitorService {
                 if (released) {
                     expiredCount++;
 
-                    // 2. Check campaign cutoff date before reassigning
-                    const order = await this.orderRepo.findById(task.orderId);
-                    const campaignCutoff = order ? order.campaignExpiryDateSnapshot || order.campaignExpiryDate : null;
-
-                    if (campaignCutoff && new Date(campaignCutoff) < now) {
-                        this.logger.warn(`Campaign '${campaignId}' cutoff date has passed. Skipping reassignment.`);
-                        continue;
-                    }
-
-                    // 3. Reassign task to a NEW unused worker in the campaign
+                    // 2. Reassign task immediately to a NEW unused worker in the campaign (independent of campaign expiry)
                     const newWorkerId = await this.reassignmentService.reassignTaskToNewWorker(task.id, campaignId);
                     if (newWorkerId) {
                         reallocatedCount++;
@@ -114,7 +109,7 @@ export class DeadlineMonitorService {
                 });
                 extendedCampaignsCount++;
                 this.logger.log(
-                    `CAMPAIGN AUTO-EXTENDED: Order '${order.id}' extended by +${extensionHours} hours to ${newExpiryDate.toISOString()} for remaining ${order.totalTasksRequired - order.tasksCompleted} tasks.`,
+                    `CAMPAIGN_AUTO_EXTENDED_NEW_ALLOCATION_WINDOW_OPEN: Order '${order.id}' extended by +${extensionHours} hours to ${newExpiryDate.toISOString()} for remaining ${order.totalTasksRequired - order.tasksCompleted} tasks. Candidate recruitment reopened.`,
                 );
             }
         }
