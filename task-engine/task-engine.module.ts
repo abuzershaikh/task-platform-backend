@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TaskEngineService } from './task-engine.service';
 import { TaskStateMachine } from './state-machine/task-state-machine';
 import { TaskCommandService } from './handlers/task-command.service';
@@ -9,9 +9,10 @@ import { TaskDeadlineService } from './handlers/task-deadline.service';
 import { TaskAttemptService } from './handlers/task-attempt.service';
 import { TaskCancellationService } from './handlers/task-cancellation.service';
 import { DatabaseModule } from '../shared/database/database.module';
+import { MatchingEngineModule } from '../matching-engine/matching-engine.module';
 
 @Module({
-    imports: [DatabaseModule],
+    imports: [DatabaseModule, forwardRef(() => MatchingEngineModule)],
     providers: [
         TaskEngineService,
         TaskStateMachine,
@@ -23,6 +24,6 @@ import { DatabaseModule } from '../shared/database/database.module';
         TaskAttemptService,
         TaskCancellationService,
     ],
-    exports: [TaskEngineService, TaskQueryService],
+    exports: [TaskEngineService, TaskQueryService, TaskDeadlineService],
 })
 export class TaskEngineModule { }

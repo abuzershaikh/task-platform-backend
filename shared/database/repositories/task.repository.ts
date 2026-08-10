@@ -56,4 +56,14 @@ export class TaskRepository {
     async findByOrderId(orderId: string): Promise<Task[]> {
         return this.repository.find({ where: { orderId } });
     }
+
+    async findAssignedTasks(): Promise<Task[]> {
+        return this.repository.find({
+            where: [
+                { status: 'assigned' },
+                { status: 'in_progress' },
+                { status: 'ACCEPTED' },
+            ],
+        });
+    }
 }

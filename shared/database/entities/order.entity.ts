@@ -59,6 +59,15 @@ export class Order {
     @Column({ name: 'review_mode', type: 'varchar', length: 50 })
     reviewMode: string;
 
+    @Column({ name: 'time_to_accept_hours', type: 'int', default: 24 })
+    timeToAcceptHours: number;
+
+    @Column({ name: 'time_to_complete_hours', type: 'int', default: 48 })
+    timeToCompleteHours: number;
+
+    @Column({ name: 'campaign_expiry_date', type: 'timestamp', nullable: true })
+    campaignExpiryDate: Date;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 

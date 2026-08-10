@@ -1,5 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { TaskRepository } from '../../shared/database/repositories/task.repository';
+import { CampaignWorkerParticipationRepository } from '../../shared/database/repositories/campaign-worker-participation.repository';
+import { TaskAssignmentRepository } from '../../shared/database/repositories/task-assignment.repository';
+import { ParticipationStatus } from '../../shared/database/entities/campaign-worker-participation.entity';
 import { TaskValidationService } from '../task-validation.service';
 import { TaskStateMachine } from '../state-machine/task-state-machine';
 import { TaskStatus } from '../types/task-status.enum';
@@ -14,16 +17,20 @@ import { CancelTaskCommand } from '../commands/cancel-task.command';
 
 @Injectable()
 export class TaskCommandService {
+    private readonly logger = new Logger(TaskCommandService.name);
+
     constructor(
         private readonly taskRepository: TaskRepository,
+        private readonly participationRepo: CampaignWorkerParticipationRepository,
+        private readonly assignmentRepo: TaskAssignmentRepository,
         private readonly validationService: TaskValidationService,
         private readonly stateMachine: TaskStateMachine,
-    ) {}
+    ) { }
 
     async createTask(command: CreateTaskCommand) {
         return this.taskRepository.create({
             orderId: command.orderId,
-            campaignId: command.campaignId,
+            campaignId: command.campaignId || command.orderId,
             taskType: command.taskType,
             rewardAmount: command.rewardAmount,
             requirements: command.requirements,
@@ -35,6 +42,16 @@ export class TaskCommandService {
 
     async assignTask(command: AssignTaskCommand) {
         const task = await this.ensureTask(command.taskId);
+        const campaignId = task.campaignId || task.orderId;
+
+        // Protection Pillar: Check if worker has ALREADY participated in this Campaign
+        const existingParticipation = await this.participationRepo.findByCampaignAndWorker(campaignId, command.workerId);
+        if (existingParticipation) {
+            this.logger.warn(
+                `Worker '${command.workerId}' has ALREADY participated in Campaign '${campaignId}' (Status: ${existingParticipation.status}). Cannot reassign same campaign task.`,
+            );
+            throw new BadRequestException(`Worker has already participated in Campaign '${campaignId}'`);
+        }
 
         if (task.assignedTo && task.assignedTo !== command.workerId) {
             throw new BadRequestException('Task is already assigned to another worker');
@@ -54,6 +71,16 @@ export class TaskCommandService {
                     id: command.actorId || command.workerId,
                     type: 'system',
                 },
+            });
+
+            // 1. Record Campaign Worker Participation (UNIQUE DB Constraint)
+            await this.participationRepo.recordParticipation(campaignId, command.workerId, ParticipationStatus.ASSIGNED);
+
+            // 2. Record Task Assignment History
+            await this.assignmentRepo.createAssignment({
+                taskId: task.id,
+                campaignId,
+                workerId: command.workerId,
             });
 
             return this.taskRepository.update(task.id, {
@@ -101,6 +128,11 @@ export class TaskCommandService {
                 type: 'worker',
             },
         });
+
+        const activeAssignment = await this.assignmentRepo.findActiveAssignment(command.taskId);
+        if (activeAssignment) {
+            await this.assignmentRepo.updateStatus(activeAssignment.id, activeAssignment.status, { acceptedAt: new Date() });
+        }
 
         return this.taskRepository.update(assignedTask.id, {
             status: TaskStatus.ACCEPTED,
@@ -180,6 +212,11 @@ export class TaskCommandService {
             throw new BadRequestException('Task is not ready for approval');
         }
 
+        const campaignId = task.campaignId || task.orderId;
+        if (task.assignedTo) {
+            await this.participationRepo.updateStatus(campaignId, task.assignedTo, ParticipationStatus.COMPLETED);
+        }
+
         return this.taskRepository.update(task.id, {
             status: TaskStatus.APPROVED,
             completedAt: new Date(),
@@ -198,6 +235,12 @@ export class TaskCommandService {
             task.status !== TaskStatus.UNDER_REVIEW
         ) {
             throw new BadRequestException('Task is not ready for rejection');
+        }
+
+        const campaignId = task.campaignId || task.orderId;
+        if (task.assignedTo) {
+            // Worker is rejected, but participation record remains so worker is excluded from this campaign!
+            await this.participationRepo.updateStatus(campaignId, task.assignedTo, ParticipationStatus.REJECTED);
         }
 
         return this.taskRepository.update(task.id, {

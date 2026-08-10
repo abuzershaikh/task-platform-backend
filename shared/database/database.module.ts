@@ -22,6 +22,8 @@ import { ServicePricing } from './entities/service-pricing.entity';
 import { SystemSetting } from './entities/system-settings.entity';
 import { PaymentTransaction } from './entities/payment-transaction.entity';
 import { TaskGenerationJob } from './entities/task-generation-job.entity';
+import { CampaignWorkerParticipation } from './entities/campaign-worker-participation.entity';
+import { TaskAssignment } from './entities/task-assignment.entity';
 
 // Repositories
 import { UserRepository } from './repositories/user.repository';
@@ -43,6 +45,8 @@ import { ServicePricingRepository } from './repositories/service-pricing.reposit
 import { SystemSettingsRepository } from './repositories/system-settings.repository';
 import { PaymentTransactionRepository } from './repositories/payment-transaction.repository';
 import { TaskGenerationJobRepository } from './repositories/task-generation-job.repository';
+import { CampaignWorkerParticipationRepository } from './repositories/campaign-worker-participation.repository';
+import { TaskAssignmentRepository } from './repositories/task-assignment.repository';
 
 const entities = [
     User,
@@ -64,6 +68,8 @@ const entities = [
     SystemSetting,
     PaymentTransaction,
     TaskGenerationJob,
+    CampaignWorkerParticipation,
+    TaskAssignment,
 ];
 
 const repositories = [
@@ -86,6 +92,8 @@ const repositories = [
     SystemSettingsRepository,
     PaymentTransactionRepository,
     TaskGenerationJobRepository,
+    CampaignWorkerParticipationRepository,
+    TaskAssignmentRepository,
 ];
 
 @Module({

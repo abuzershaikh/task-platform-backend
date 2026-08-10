@@ -64,6 +64,9 @@ export class BuyerOrderController {
             totalTasksRequired?: number;
             requirements?: any;
             reviewMode?: string;
+            timeToAcceptHours?: number;
+            timeToCompleteHours?: number;
+            campaignExpiryDate?: string;
         },
     ) {
         const serviceIdentifier = data.serviceId || data.serviceCode || data.taskType;
@@ -106,6 +109,9 @@ export class BuyerOrderController {
             status: 'PAYMENT_PENDING',
             requirements: data.requirements,
             reviewMode: data.reviewMode || 'buyer',
+            timeToAcceptHours: data.timeToAcceptHours || 24,
+            timeToCompleteHours: data.timeToCompleteHours || 48,
+            campaignExpiryDate: data.campaignExpiryDate ? new Date(data.campaignExpiryDate) : undefined,
         });
 
         return {
