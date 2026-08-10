@@ -68,6 +68,15 @@ export class Order {
     @Column({ name: 'campaign_expiry_date', type: 'timestamp', nullable: true })
     campaignExpiryDate: Date;
 
+    @Column({ name: 'time_to_accept_hours_snapshot', type: 'int', default: 24 })
+    timeToAcceptHoursSnapshot: number;
+
+    @Column({ name: 'time_to_complete_hours_snapshot', type: 'int', default: 48 })
+    timeToCompleteHoursSnapshot: number;
+
+    @Column({ name: 'campaign_expiry_date_snapshot', type: 'timestamp', nullable: true })
+    campaignExpiryDateSnapshot: Date;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 

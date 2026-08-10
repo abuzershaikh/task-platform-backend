@@ -73,8 +73,15 @@ export class TaskCommandService {
                 },
             });
 
-            // 1. Record Campaign Worker Participation (UNIQUE DB Constraint)
-            await this.participationRepo.recordParticipation(campaignId, command.workerId, ParticipationStatus.ASSIGNED);
+            // 1. Record Campaign Worker Participation (UNIQUE DB Constraint Guard against race conditions)
+            try {
+                await this.participationRepo.recordParticipation(campaignId, command.workerId, ParticipationStatus.ASSIGNED);
+            } catch (err) {
+                this.logger.warn(
+                    `DB UNIQUE CONFLICT: Worker '${command.workerId}' was assigned concurrently by another process in Campaign '${campaignId}'. Discarding candidate worker.`,
+                );
+                throw new BadRequestException(`Worker '${command.workerId}' participation conflict in Campaign '${campaignId}'`);
+            }
 
             // 2. Record Task Assignment History
             await this.assignmentRepo.createAssignment({

@@ -6,12 +6,15 @@ import { ParticipationStatus } from '../../shared/database/entities/campaign-wor
 import { TaskAssignmentStatus } from '../../shared/database/entities/task-assignment.entity';
 import { MatchingEngineService } from '../../matching-engine/matching-engine.service';
 
+import { OrderRepository } from '../../shared/database/repositories/order.repository';
+
 @Injectable()
 export class TaskDeadlineService {
     private readonly logger = new Logger(TaskDeadlineService.name);
 
     constructor(
         private readonly taskRepo: TaskRepository,
+        private readonly orderRepo: OrderRepository,
         private readonly participationRepo: CampaignWorkerParticipationRepository,
         private readonly assignmentRepo: TaskAssignmentRepository,
         private readonly matchingEngine: MatchingEngineService,
@@ -59,8 +62,18 @@ export class TaskDeadlineService {
                 });
                 expiredCount++;
 
-                // 4. Trigger Reallocation Engine (Matching Engine will EXCLUDE Worker A & all used campaign workers)
+                // 4. Trigger Reallocation Engine (Check campaign expiry date first!)
                 try {
+                    const order = await this.orderRepo.findById(task.orderId);
+                    const campaignExpiryCutoff = order ? order.campaignExpiryDateSnapshot || order.campaignExpiryDate : null;
+
+                    if (campaignExpiryCutoff && new Date(campaignExpiryCutoff) < now) {
+                        this.logger.warn(
+                            `Campaign '${campaignId}' cutoff date (${campaignExpiryCutoff}) has PASSED. Stopping new reallocation for Task '${task.id}'.`,
+                        );
+                        continue;
+                    }
+
                     const matchResult = await this.matchingEngine.matchWorkersForTask({
                         taskId: task.id,
                     });

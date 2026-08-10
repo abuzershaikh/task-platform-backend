@@ -17,6 +17,7 @@ import { PricingEngine } from '../../../../shared/engines/pricing-engine/pricing
 import { CurrentUser } from '../../../../shared/auth/decorators/current-user.decorator';
 import { Roles } from '../../../../shared/auth/decorators/roles.decorator';
 import { UserRole, User } from '../../../../shared/database/entities/user.entity';
+import { TimingPolicy } from '../../../../shared/policies/timing-policy';
 
 @ApiTags('Buyer - Orders')
 @Roles(UserRole.BUYER)
@@ -93,6 +94,13 @@ export class BuyerOrderController {
 
         const title = data.title || `${snapshot.serviceCode || serviceIdentifier} Campaign (${quantity} tasks)`;
 
+        // Validate timing parameter bounds (1h-72h accept, 1h-168h complete)
+        TimingPolicy.validateTiming(data.timeToAcceptHours, data.timeToCompleteHours);
+
+        const timeToAccept = data.timeToAcceptHours || 24;
+        const timeToComplete = data.timeToCompleteHours || 48;
+        const campaignExpiryDate = data.campaignExpiryDate ? new Date(data.campaignExpiryDate) : undefined;
+
         const order = await this.orderRepo.create({
             buyerId: user.id,
             title,
@@ -109,9 +117,12 @@ export class BuyerOrderController {
             status: 'PAYMENT_PENDING',
             requirements: data.requirements,
             reviewMode: data.reviewMode || 'buyer',
-            timeToAcceptHours: data.timeToAcceptHours || 24,
-            timeToCompleteHours: data.timeToCompleteHours || 48,
-            campaignExpiryDate: data.campaignExpiryDate ? new Date(data.campaignExpiryDate) : undefined,
+            timeToAcceptHours: timeToAccept,
+            timeToCompleteHours: timeToComplete,
+            campaignExpiryDate: campaignExpiryDate,
+            timeToAcceptHoursSnapshot: timeToAccept,
+            timeToCompleteHoursSnapshot: timeToComplete,
+            campaignExpiryDateSnapshot: campaignExpiryDate,
         });
 
         return {
