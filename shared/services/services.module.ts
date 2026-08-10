@@ -23,6 +23,14 @@ import { ServiceVersionService } from '../modules/service-catalog/services/servi
 import { OrderStateMachineService } from './order-state-machine.service';
 import { OrderActivatedListener } from './order-activated.listener';
 import { TaskEngineModule } from '../../task-engine/task-engine.module';
+import { MatchingEngineModule } from '../../matching-engine/matching-engine.module';
+
+// Reallocation Engine Services
+import { TaskReleaseService } from '../engines/reallocation-engine/services/task-release.service';
+import { ReassignmentService } from '../engines/reallocation-engine/services/reassignment.service';
+import { EarlyReallocationService } from '../engines/reallocation-engine/services/early-reallocation.service';
+import { DeadlineMonitorService } from '../engines/reallocation-engine/services/deadline-monitor.service';
+import { ReallocationEngine } from '../engines/reallocation-engine/reallocation.engine';
 
 const providers = [
     AuditLogService,
@@ -41,11 +49,16 @@ const providers = [
     ServiceVersionService,
     OrderStateMachineService,
     OrderActivatedListener,
+    TaskReleaseService,
+    ReassignmentService,
+    EarlyReallocationService,
+    DeadlineMonitorService,
+    ReallocationEngine,
 ];
 
 @Global()
 @Module({
-    imports: [DatabaseModule, forwardRef(() => TaskEngineModule)],
+    imports: [DatabaseModule, forwardRef(() => TaskEngineModule), forwardRef(() => MatchingEngineModule)],
     providers,
     exports: providers,
 })

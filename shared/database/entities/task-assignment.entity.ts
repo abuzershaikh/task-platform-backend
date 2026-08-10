@@ -13,6 +13,7 @@ export enum TaskAssignmentStatus {
     STARTED = 'STARTED',
     SUBMITTED = 'SUBMITTED',
     EXPIRED = 'EXPIRED',
+    EARLY_RELEASED = 'EARLY_RELEASED',
     COMPLETED = 'COMPLETED',
     REJECTED = 'REJECTED',
 }
@@ -43,6 +44,9 @@ export class TaskAssignment {
         default: TaskAssignmentStatus.ASSIGNED,
     })
     status: TaskAssignmentStatus;
+
+    @Column({ name: 'release_reason', type: 'varchar', length: 100, nullable: true })
+    releaseReason: string;
 
     @CreateDateColumn({ name: 'assigned_at' })
     assignedAt: Date;

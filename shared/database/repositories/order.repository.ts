@@ -20,7 +20,7 @@ export class OrderRepository {
 
     async findActiveOrders(): Promise<Order[]> {
         return this.repository.find({
-            where: { status: 'active' },
+            where: [{ status: 'ACTIVE' }, { status: 'active' }],
         });
     }
 
