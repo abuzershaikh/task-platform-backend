@@ -43,6 +43,27 @@ export class AuditLogService {
         }
     }
 
+    async logAction(params: {
+        userId: string;
+        action: string;
+        targetType: string;
+        targetId: string;
+        newValue?: any;
+        previousValue?: any;
+        metadata?: any;
+    }): Promise<AuditLog> {
+        return this.log({
+            actorId: params.userId,
+            actorRole: 'ADMIN',
+            action: params.action,
+            entityType: params.targetType,
+            entityId: params.targetId,
+            newState: params.newValue,
+            previousState: params.previousValue,
+            metadata: params.metadata,
+        });
+    }
+
     async getLogs(options: AuditLogFilterOptions) {
         return this.auditLogRepo.findLogs(options);
     }

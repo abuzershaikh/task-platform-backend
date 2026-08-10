@@ -30,7 +30,7 @@ export class RatingEngineService {
             buyerId: params.buyerId,
             workerId,
             taskId: params.taskId,
-            score: params.score,
+            rating: params.score,
             feedback: params.feedback,
         });
 

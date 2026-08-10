@@ -21,7 +21,7 @@ export class WorkerNotificationController {
     @Get()
     @ApiOperation({ summary: 'Get worker notifications' })
     async getNotifications(@CurrentUser() user: User) {
-        const notifications = await this.notificationRepo.findByUser(user.id);
+        const notifications = await this.notificationRepo.findByUserId(user.id);
         return {
             success: true,
             notifications,
@@ -32,7 +32,7 @@ export class WorkerNotificationController {
     @Get('unread-count')
     @ApiOperation({ summary: 'Get unread notification count' })
     async getUnreadCount(@CurrentUser() user: User) {
-        const count = await this.notificationRepo.getUnreadCount(user.id);
+        const count = await this.notificationRepo.countUnread(user.id);
         return {
             success: true,
             unreadCount: count,
@@ -41,8 +41,8 @@ export class WorkerNotificationController {
 
     @Patch(':id/read')
     @ApiOperation({ summary: 'Mark single notification as read' })
-    async markAsRead(@Param('id') id: string, @CurrentUser() user: User) {
-        await this.notificationRepo.markAsRead(id, user.id);
+    async markAsRead(@Param('id') id: string) {
+        await this.notificationRepo.markAsRead(id);
         return {
             success: true,
             message: 'Notification marked as read',

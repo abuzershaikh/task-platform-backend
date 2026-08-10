@@ -184,8 +184,8 @@ export class WorkerTaskController {
             success: true,
             taskId,
             status: submission.status,
-            reasonCode: submission.notes || 'PROOF_REJECTED',
-            rejectionReason: submission.notes || 'Task submission rejected by reviewer',
+            reasonCode: submission.reviewNotes || 'PROOF_REJECTED',
+            rejectionReason: submission.reviewNotes || 'Task submission rejected by reviewer',
             rejectedAt: submission.reviewedAt,
             resubmissionAllowed: submission.status === 'rejected',
         };

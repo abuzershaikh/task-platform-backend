@@ -62,4 +62,23 @@ export class AuditLogRepository {
         const [items, total] = await query.getManyAndCount();
         return { items, total };
     }
+
+    async findById(id: string): Promise<AuditLog | null> {
+        return this.repository.findOne({ where: { id } });
+    }
+
+    async findByAction(action: string): Promise<AuditLog[]> {
+        return this.repository.find({ where: { action }, order: { createdAt: 'DESC' } });
+    }
+
+    async findRecent(limit = 100): Promise<AuditLog[]> {
+        return this.repository.find({ order: { createdAt: 'DESC' }, take: limit });
+    }
+
+    async findByTarget(targetType: string, targetId: string): Promise<AuditLog[]> {
+        return this.repository.find({
+            where: { entityType: targetType, entityId: targetId },
+            order: { createdAt: 'DESC' },
+        });
+    }
 }
